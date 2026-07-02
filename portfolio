@@ -1,0 +1,306 @@
+# Personal Portfolio — Full-Stack
+
+A full-stack personal portfolio: a vanilla HTML/CSS/JS frontend, an
+Express.js REST API backend, and a database layer for storing projects,
+skills, and contact-form messages.
+
+```
+portfolio/
+├── public/              # Frontend (HTML/CSS/JS, served as static files)
+│   ├── index.html
+│   ├── css/style.css
+│   └── js/app.js
+├── server/               # Backend (Express)
+│   ├── index.js          # App entry point
+│   ├── db.js              # Default DB: lowdb (JSON file, zero native deps)
+│   ├── db-mongo.js        # Optional: real MongoDB via Mongoose
+│   ├── seed.js             # Populates sample projects/skills
+│   ├── data/db.json        # The JSON "database" file (auto-created)
+│   └── routes/
+│       ├── projects.js
+│       ├── skills.js
+│       └── contact.js
+├── render.yaml            # One-click Render deployment config
+├── .env.example
+└── package.json
+```
+
+## Why this stack
+
+- **Frontend**: plain HTML/CSS/JS — no build step, loads instantly, easy
+  to swap for React later (the API is framework-agnostic).
+- **Backend**: Express.js, a thin REST API (`/api/projects`, `/api/skills`,
+  `/api/contact`).
+- **Database**: ships with **lowdb** (a JSON file) by default so the
+  project runs anywhere with zero native compilation or external services
+  — important on free hosting tiers and in sandboxed environments. A
+  drop-in **MongoDB** (Mongoose) backend is included in `server/db-mongo.js`
+  for a production-grade database; see "Switching to a production
+  database" below for the two-step swap. The same pattern extends to
+  PostgreSQL via an ORM like Prisma if you'd prefer that instead.
+
+## Running locally
+
+```bash
+npm install
+npm run seed     # populate sample projects & skills
+npm start        # serves the API and the frontend on http://localhost:5000
+```
+
+Open `http://localhost:5000` — the page fetches projects and skills from
+the API live, and the contact form posts to `/api/contact`.
+
+## API reference
+
+| Method | Route               | Description                          |
+|--------|----------------------|---------------------------------------|
+| GET    | `/api/projects`       | List all projects (`?featured=true`)  |
+| GET    | `/api/projects/:id`   | Get one project                       |
+| POST   | `/api/projects`       | Create a project                      |
+| PUT    | `/api/projects/:id`   | Update a project                      |
+| DELETE | `/api/projects/:id`   | Delete a project                      |
+| GET    | `/api/skills`          | List skills grouped by category       |
+| POST   | `/api/skills`          | Add a skill                            |
+| DELETE | `/api/skills/:id`      | Remove a skill                         |
+| POST   | `/api/contact`         | Submit the contact form                |
+| GET    | `/api/contact`         | List submitted messages (admin)        |
+| GET    | `/api/health`           | Health check                           |
+
+Example: add a project with `curl`:
+
+```bash
+curl -X POST http://localhost:5000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"title":"My Project","description":"What it does","techStack":["Python","SQL"],"featured":true}'
+```
+
+## Customizing your content
+
+Edit `server/seed.js` with your own projects and skills, then re-run
+`npm run seed`. Or manage content live through the API endpoints above
+(e.g. from `curl`, Postman, or a small admin script) — no redeploy needed
+since the data lives in the database, not the code.
+
+Update your contact details and bio directly in `public/index.html`
+(the "About" and "Contact" sections).
+
+## Switching to a production database
+
+The default JSON-file database is great for getting started, but on most
+hosts its disk is **ephemeral** (wiped on redeploy), so for a real
+production deployment, switch to MongoDB:
+
+1. Create a free cluster on [MongoDB Atlas](https://www.mongodb.com/atlas)
+   and copy its connection string into `MONGODB_URI` in your `.env`.
+2. In `server/index.js`, change the import from `./db.js` to
+   `./db-mongo.js`, and update `server/routes/*.js` to use the
+   `Project`/`Skill`/`Message` Mongoose models exported from
+   `db-mongo.js` instead of the `db.data.*` arrays (the route logic and
+   response shapes stay the same — only the storage calls change).
+
+The same approach works for PostgreSQL: swap in an ORM such as Prisma or
+Sequelize behind the same route files.
+
+## Deployment
+
+### Option A — Single app on Render (simplest)
+
+Render runs the Express server directly, which also serves the static
+frontend — one deployment, one URL.
+
+1. Push this project to a GitHub repo.
+2. On [Render](https://render.com), choose **New → Web Service**, connect
+   the repo. Render will detect `render.yaml` automatically (or set
+   manually: Build command `npm install && npm run seed`, Start command
+   `npm start`).
+3. If using MongoDB, add `MONGODB_URI` under Environment variables.
+4. Deploy — your portfolio is live at `https://<your-app>.onrender.com`.
+
+### Option B — Split frontend (Netlify/Vercel) + backend (Render/Railway)
+
+If you'd rather host the static frontend separately:
+
+1. Deploy `server/` to **Render** or **Railway** as a Node web service
+   (same steps as above) to get an API URL, e.g.
+   `https://portfolio-api.onrender.com`.
+2. In `public/js/app.js`, set `const API_BASE = 'https://portfolio-api.onrender.com';`
+3. Deploy the `public/` folder to **Netlify** (drag-and-drop the folder
+   in the Netlify dashboard, or `netlify deploy --dir=public`) or
+   **Vercel** (`vercel --cwd public`).
+4. On the backend, make sure CORS allows your frontend's domain (the
+   `cors()` middleware in `server/index.js` currently allows all
+   origins — restrict this with `cors({ origin: 'https://yourname.netlify.app' })`
+   once you know your final frontend URL).
+
+### Option C — Vercel serverless (backend + frontend together)
+
+Vercel can host the whole project, but the Express app needs to run as a
+serverless function rather than a long-lived process. Add a
+`vercel.json` that routes `/api/*` to `server/index.js` (exported as a
+handler) and everything else to `public/`; see Vercel's
+["Express on Vercel"](https://vercel.com/guides/using-express-with-vercel)
+guide for the exact wiring, since serverless cold-starts mean the
+JSON-file database should be swapped for MongoDB first (serverless
+filesystems are read-only/ephemeral).
+
+## What you'll have learned
+
+- Building a REST API with Express (routing, validation, status codes)
+- Wiring a frontend to a live backend with `fetch`
+- Structuring a database layer so it can be swapped (JSON file → MongoDB)
+  without touching route logic
+- Basic security hygiene: input validation, rate limiting on public forms
+- Deploying a Node app to a hosting platform with environment variables
+# Personal Portfolio — Full-Stack
+
+A full-stack personal portfolio: a vanilla HTML/CSS/JS frontend, an
+Express.js REST API backend, and a database layer for storing projects,
+skills, and contact-form messages.
+
+```
+portfolio/
+├── public/              # Frontend (HTML/CSS/JS, served as static files)
+│   ├── index.html
+│   ├── css/style.css
+│   └── js/app.js
+├── server/               # Backend (Express)
+│   ├── index.js          # App entry point
+│   ├── db.js              # Default DB: lowdb (JSON file, zero native deps)
+│   ├── db-mongo.js        # Optional: real MongoDB via Mongoose
+│   ├── seed.js             # Populates sample projects/skills
+│   ├── data/db.json        # The JSON "database" file (auto-created)
+│   └── routes/
+│       ├── projects.js
+│       ├── skills.js
+│       └── contact.js
+├── render.yaml            # One-click Render deployment config
+├── .env.example
+└── package.json
+```
+
+## Why this stack
+
+- **Frontend**: plain HTML/CSS/JS — no build step, loads instantly, easy
+  to swap for React later (the API is framework-agnostic).
+- **Backend**: Express.js, a thin REST API (`/api/projects`, `/api/skills`,
+  `/api/contact`).
+- **Database**: ships with **lowdb** (a JSON file) by default so the
+  project runs anywhere with zero native compilation or external services
+  — important on free hosting tiers and in sandboxed environments. A
+  drop-in **MongoDB** (Mongoose) backend is included in `server/db-mongo.js`
+  for a production-grade database; see "Switching to a production
+  database" below for the two-step swap. The same pattern extends to
+  PostgreSQL via an ORM like Prisma if you'd prefer that instead.
+
+## Running locally
+
+```bash
+npm install
+npm run seed     # populate sample projects & skills
+npm start        # serves the API and the frontend on http://localhost:5000
+```
+
+Open `http://localhost:5000` — the page fetches projects and skills from
+the API live, and the contact form posts to `/api/contact`.
+
+## API reference
+
+| Method | Route               | Description                          |
+|--------|----------------------|---------------------------------------|
+| GET    | `/api/projects`       | List all projects (`?featured=true`)  |
+| GET    | `/api/projects/:id`   | Get one project                       |
+| POST   | `/api/projects`       | Create a project                      |
+| PUT    | `/api/projects/:id`   | Update a project                      |
+| DELETE | `/api/projects/:id`   | Delete a project                      |
+| GET    | `/api/skills`          | List skills grouped by category       |
+| POST   | `/api/skills`          | Add a skill                            |
+| DELETE | `/api/skills/:id`      | Remove a skill                         |
+| POST   | `/api/contact`         | Submit the contact form                |
+| GET    | `/api/contact`         | List submitted messages (admin)        |
+| GET    | `/api/health`           | Health check                           |
+
+Example: add a project with `curl`:
+
+```bash
+curl -X POST http://localhost:5000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"title":"My Project","description":"What it does","techStack":["Python","SQL"],"featured":true}'
+```
+
+## Customizing your content
+
+Edit `server/seed.js` with your own projects and skills, then re-run
+`npm run seed`. Or manage content live through the API endpoints above
+(e.g. from `curl`, Postman, or a small admin script) — no redeploy needed
+since the data lives in the database, not the code.
+
+Update your contact details and bio directly in `public/index.html`
+(the "About" and "Contact" sections).
+
+## Switching to a production database
+
+The default JSON-file database is great for getting started, but on most
+hosts its disk is **ephemeral** (wiped on redeploy), so for a real
+production deployment, switch to MongoDB:
+
+1. Create a free cluster on [MongoDB Atlas](https://www.mongodb.com/atlas)
+   and copy its connection string into `MONGODB_URI` in your `.env`.
+2. In `server/index.js`, change the import from `./db.js` to
+   `./db-mongo.js`, and update `server/routes/*.js` to use the
+   `Project`/`Skill`/`Message` Mongoose models exported from
+   `db-mongo.js` instead of the `db.data.*` arrays (the route logic and
+   response shapes stay the same — only the storage calls change).
+
+The same approach works for PostgreSQL: swap in an ORM such as Prisma or
+Sequelize behind the same route files.
+
+## Deployment
+
+### Option A — Single app on Render (simplest)
+
+Render runs the Express server directly, which also serves the static
+frontend — one deployment, one URL.
+
+1. Push this project to a GitHub repo.
+2. On [Render](https://render.com), choose **New → Web Service**, connect
+   the repo. Render will detect `render.yaml` automatically (or set
+   manually: Build command `npm install && npm run seed`, Start command
+   `npm start`).
+3. If using MongoDB, add `MONGODB_URI` under Environment variables.
+4. Deploy — your portfolio is live at `https://<your-app>.onrender.com`.
+
+### Option B — Split frontend (Netlify/Vercel) + backend (Render/Railway)
+
+If you'd rather host the static frontend separately:
+
+1. Deploy `server/` to **Render** or **Railway** as a Node web service
+   (same steps as above) to get an API URL, e.g.
+   `https://portfolio-api.onrender.com`.
+2. In `public/js/app.js`, set `const API_BASE = 'https://portfolio-api.onrender.com';`
+3. Deploy the `public/` folder to **Netlify** (drag-and-drop the folder
+   in the Netlify dashboard, or `netlify deploy --dir=public`) or
+   **Vercel** (`vercel --cwd public`).
+4. On the backend, make sure CORS allows your frontend's domain (the
+   `cors()` middleware in `server/index.js` currently allows all
+   origins — restrict this with `cors({ origin: 'https://yourname.netlify.app' })`
+   once you know your final frontend URL).
+
+### Option C — Vercel serverless (backend + frontend together)
+
+Vercel can host the whole project, but the Express app needs to run as a
+serverless function rather than a long-lived process. Add a
+`vercel.json` that routes `/api/*` to `server/index.js` (exported as a
+handler) and everything else to `public/`; see Vercel's
+["Express on Vercel"](https://vercel.com/guides/using-express-with-vercel)
+guide for the exact wiring, since serverless cold-starts mean the
+JSON-file database should be swapped for MongoDB first (serverless
+filesystems are read-only/ephemeral).
+
+## What you'll have learned
+
+- Building a REST API with Express (routing, validation, status codes)
+- Wiring a frontend to a live backend with `fetch`
+- Structuring a database layer so it can be swapped (JSON file → MongoDB)
+  without touching route logic
+- Basic security hygiene: input validation, rate limiting on public forms
+- Deploying a Node app to a hosting platform with environment variables
